@@ -1,0 +1,9 @@
+POST http://localhost:3003/api/blogs
+Content-Type: application/json
+
+{
+  "title": "Ein Blog von Vielen",
+  "author": "The Rosenblatts",
+  "url": "https://einblogvonvielen.org/",
+  "likes": 0
+}
