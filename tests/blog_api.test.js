@@ -82,6 +82,29 @@ test('blog added without url 400 response', async () => {
     .expect(400)
 })
 
+test('delete a specific blog post by id', async () => {
+  const blogsAtStart = await helper.blogsInDb()
+  const blogToDelete = blogsAtStart[0]
+
+  await api
+    .delete(`/api/blogs/${blogToDelete.id}`)
+    .expect(204)
+  const blogsAtEnd = await helper.blogsInDb()
+  expect(blogsAtEnd.length).toBe(blogsAtStart.length - 1)
+})
+
+test('a blog post can be updated by id', async () => {
+  const blogsAtStart = await helper.blogsInDb()
+  const blogToUpdate = blogsAtStart[0]
+  blogToUpdate.likes = 1312
+  await api
+    .put(`/api/blogs/${blogToUpdate.id}`)
+    .send(blogToUpdate)
+  const blogsAtEnd = await helper.blogsInDb()
+  console.log(blogsAtEnd[0])
+  expect(blogsAtEnd[0].likes).toBe(1312)
+})
+
 afterAll(() => {
   mongoose.connection.close()
 })
