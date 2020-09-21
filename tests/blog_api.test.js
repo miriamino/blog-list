@@ -1,11 +1,13 @@
 const supertest = require('supertest')
 const mongoose = require('mongoose')
+const { error } = require('console')
+const { stringify } = require('querystring')
 const helper = require('./test_helper')
 const app = require('../app')
+const Blog = require('../models/blog')
+const User = require('../models/user')
 
 const api = supertest(app)
-
-const Blog = require('../models/blog')
 
 beforeEach(async () => {
   await Blog.deleteMany({})
@@ -101,8 +103,32 @@ test('a blog post can be updated by id', async () => {
     .put(`/api/blogs/${blogToUpdate.id}`)
     .send(blogToUpdate)
   const blogsAtEnd = await helper.blogsInDb()
-  console.log(blogsAtEnd[0])
   expect(blogsAtEnd[0].likes).toBe(1312)
+})
+
+beforeEach(async () => {
+  await User.deleteMany({})
+
+  const userObjects = helper.initialUsers
+    .map((user) => new User(user))
+  const promiseArray = userObjects.map((user) => user.save())
+  await Promise.all(promiseArray)
+})
+
+test('invalid users can not be created', async () => {
+  const usersAtStart = await helper.usersInDb()
+  const newUser = {
+    username: 'something',
+    name: 'something',
+    password: 'd',
+  }
+  const result = await api
+    .post('/api/users')
+    .send(newUser)
+    .expect(400)
+  expect((result.body.error)).toContain('password must be at least 3 characters long')
+  const usersAtEnd = await helper.usersInDb()
+  expect(usersAtEnd.length).toBe(usersAtStart.length)
 })
 
 afterAll(() => {
