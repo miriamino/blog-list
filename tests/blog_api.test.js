@@ -1,7 +1,6 @@
 const supertest = require('supertest')
 const mongoose = require('mongoose')
-const { error } = require('console')
-const { stringify } = require('querystring')
+const jwt = require('jsonwebtoken')
 const helper = require('./test_helper')
 const app = require('../app')
 const Blog = require('../models/blog')
@@ -44,9 +43,13 @@ test('a valid blog can be added ', async () => {
     url: 'https://annalist.noblogs.org/post/2019/11/26/20-jahre-indymedia-ein-anderes-internet-schien-moeglich',
     likes: 4,
   })
-
+  const usersAtStart = await helper.usersInDb()
+  const user = usersAtStart[0]
+  const userForToken = { username: user.username, id: user.id }
+  const token = jwt.sign(userForToken, process.env.SECRET)
   await api
     .post('/api/blogs')
+    .set('Authorization', `bearer ${token.toString()}`)
     .send(newBlog)
     .expect(201)
     .expect('Content-Type', /application\/json/)
@@ -61,9 +64,17 @@ test('blog likes default to 0', async () => {
     author: 'Anne Roth',
     url: 'https://annalist.noblogs.org/post/2019/11/26/20-jahre-indymedia-ein-anderes-internet-schien-moeglich',
   })
+  const usersAtStart = await helper.usersInDb()
+  const user = usersAtStart[0]
+  const userForToken = {
+    username: user.username,
+    id: user.id,
+  }
+  const token = jwt.sign(userForToken, process.env.SECRET)
 
   await api
     .post('/api/blogs')
+    .set('Authorization', `bearer ${token.toString()}`)
     .send(newBlog)
 
   const blogs = await helper.blogsInDb()
@@ -77,22 +88,18 @@ test('blog added without url 400 response', async () => {
     author: 'Anne Roth',
     likes: 4,
   })
+  const usersAtStart = await helper.usersInDb()
+  const user = usersAtStart[0]
+  const userForToken = {
+    username: user.username,
+    id: user.id,
+  }
+  const token = jwt.sign(userForToken, process.env.SECRET)
 
   await api
     .post('/api/blogs')
+    .set('Authorization', `bearer ${token.toString()}`)
     .send(newBlog)
-    .expect(400)
-})
-
-test('delete a specific blog post by id', async () => {
-  const blogsAtStart = await helper.blogsInDb()
-  const blogToDelete = blogsAtStart[0]
-
-  await api
-    .delete(`/api/blogs/${blogToDelete.id}`)
-    .expect(204)
-  const blogsAtEnd = await helper.blogsInDb()
-  expect(blogsAtEnd.length).toBe(blogsAtStart.length - 1)
 })
 
 test('a blog post can be updated by id', async () => {
@@ -129,6 +136,57 @@ test('invalid users can not be created', async () => {
   expect((result.body.error)).toContain('password must be at least 3 characters long')
   const usersAtEnd = await helper.usersInDb()
   expect(usersAtEnd.length).toBe(usersAtStart.length)
+})
+
+test('blog can only be deleted by original user', async () => {
+  const blogsAtStart = await helper.blogsInDb()
+  const blogToDelete = blogsAtStart[0]
+  const usersAtStart = await helper.usersInDb()
+  const user = usersAtStart[0]
+  const userForToken = {
+    username: user.username,
+    id: user.id,
+  }
+  const token = jwt.sign(userForToken, process.env.SECRET)
+
+  await api
+    .delete(`/api/blogs/${blogToDelete.id}`)
+    .set('Authorization', `bearer ${token.toString()}`)
+    .expect(401)
+  const blogsAtEnd = await helper.blogsInDb()
+  expect(blogsAtEnd.length).toBe(blogsAtStart.length)
+})
+
+test('blog can only be deleted when token is provided', async () => {
+  const blogsAtStart = await helper.blogsInDb()
+  const blogToDelete = blogsAtStart[0]
+
+  const result = await api
+    .delete(`/api/blogs/${blogToDelete.id}`)
+    .expect(401)
+  const blogsAtEnd = await helper.blogsInDb()
+  expect(blogsAtEnd.length).toBe(blogsAtStart.length)
+  expect((result.body.error)).toContain('Unauthorized')
+})
+
+test('delete a specific blog post by id', async () => {
+  const blogsAtStart = await helper.blogsInDb()
+  const blogToDelete = blogsAtStart[0]
+  const usersAtStart = await helper.usersInDb()
+  const userid = blogToDelete.user
+  const user = await usersAtStart.find((u) => u.id === userid.toString())
+  const userForToken = {
+    username: user.username,
+    id: user.id,
+  }
+  const token = jwt.sign(userForToken, process.env.SECRET)
+
+  await api
+    .delete(`/api/blogs/${blogToDelete.id}`)
+    .set('Authorization', `bearer ${token.toString()}`)
+    .expect(204)
+  const blogsAtEnd = await helper.blogsInDb()
+  expect(blogsAtEnd.length).toBe(blogsAtStart.length - 1)
 })
 
 afterAll(() => {
