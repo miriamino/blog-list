@@ -1,192 +1,244 @@
 const supertest = require('supertest')
 const mongoose = require('mongoose')
-const jwt = require('jsonwebtoken')
 const helper = require('./test_helper')
 const app = require('../app')
-const Blog = require('../models/blog')
-const User = require('../models/user')
 
 const api = supertest(app)
 
+const Blog = require('../models/blog')
+const User = require('../models/user')
+
 beforeEach(async () => {
   await Blog.deleteMany({})
+  await User.deleteMany({})
 
   const blogObjects = helper.initialBlogs
     .map((blog) => new Blog(blog))
+
   const promiseArray = blogObjects.map((blog) => blog.save())
   await Promise.all(promiseArray)
 })
 
-test('blogs are returned as json', async () => {
+describe('when some blogs are saved', () => {
+  test('all blogs are returned', async () => {
+    const response = await api.get('/api/blogs')
+
+    expect(response.body.length).toBe(helper.initialBlogs.length)
+  })
+
+  test('id field is properly named', async () => {
+    const response = await api.get('/api/blogs')
+
+    expect(response.body[0].id).toBeDefined()
+  })
+})
+
+test('a blog can be edited', async () => {
+  const [aBlog] = await helper.blogsInDb()
+
+  const editedBlog = {
+    ...aBlog,
+    likes: aBlog.likes + 1,
+  }
+
   await api
-    .get('/api/blogs')
+    .put(`/api/blogs/${aBlog.id}`)
+    .send(editedBlog)
     .expect(200)
-    .expect('Content-Type', /application\/json/)
+
+  const blogsAtEnd = await helper.blogsInDb()
+  const edited = blogsAtEnd.find((b) => b.url === aBlog.url)
+  expect(edited.likes).toBe(aBlog.likes + 1)
 })
 
-test('all blogs are returned', async () => {
-  const response = await api.get('/api/blogs')
+describe('when a blog is posted to api', () => {
+  let headers
 
-  expect(response.body.length).toBe(helper.initialBlogs.length)
-})
+  beforeEach(async () => {
+    const newUser = {
+      username: 'janedoez',
+      name: 'Jane Z. Doe',
+      password: 'password',
+    }
 
-test('id variable to be defined', async () => {
-  const response = await api.get('/api/blogs')
+    await api
+      .post('/api/users')
+      .send(newUser)
 
-  response.body.map((blog) => expect(blog.id).toBeDefined())
-})
+    const result = await api
+      .post('/api/login')
+      .send(newUser)
 
-test('a valid blog can be added ', async () => {
-  const newBlog = new Blog({
-    title: '20 Jahre Indymedia – Ein anderes Internet schien moeglich',
-    author: 'Anne Roth',
-    url: 'https://annalist.noblogs.org/post/2019/11/26/20-jahre-indymedia-ein-anderes-internet-schien-moeglich',
-    likes: 4,
+    headers = {
+      Authorization: `bearer ${result.body.token}`,
+    }
   })
-  const usersAtStart = await helper.usersInDb()
-  const user = usersAtStart[0]
-  const userForToken = { username: user.username, id: user.id }
-  const token = jwt.sign(userForToken, process.env.SECRET)
-  await api
-    .post('/api/blogs')
-    .set('Authorization', `bearer ${token.toString()}`)
-    .send(newBlog)
-    .expect(201)
-    .expect('Content-Type', /application\/json/)
 
-  const blogsAtEnd = await helper.blogsInDb()
-  expect(blogsAtEnd.length).toBe(helper.initialBlogs.length + 1)
-})
+  test('it is saved to database', async () => {
+    const newBlog = {
+      title: 'Great developer experience',
+      author: 'Hector Ramos',
+      url: 'https://jestjs.io/blog/2017/01/30/a-great-developer-experience',
+      likes: 7,
+    }
 
-test('blog likes default to 0', async () => {
-  const newBlog = new Blog({
-    title: '20 Jahre Indymedia – Ein anderes Internet schien moeglich',
-    author: 'Anne Roth',
-    url: 'https://annalist.noblogs.org/post/2019/11/26/20-jahre-indymedia-ein-anderes-internet-schien-moeglich',
+    await api
+      .post('/api/blogs')
+      .send(newBlog)
+      .set(headers)
+      .expect(201)
+      .expect('Content-Type', /application\/json/)
+
+    const blogsAtEnd = await helper.blogsInDb()
+    expect(blogsAtEnd.length).toBe(helper.initialBlogs.length + 1)
+
+    const titles = blogsAtEnd.map((b) => b.title)
+    expect(titles).toContain(
+      'Great developer experience',
+    )
   })
-  const usersAtStart = await helper.usersInDb()
-  const user = usersAtStart[0]
-  const userForToken = {
-    username: user.username,
-    id: user.id,
-  }
-  const token = jwt.sign(userForToken, process.env.SECRET)
 
-  await api
-    .post('/api/blogs')
-    .set('Authorization', `bearer ${token.toString()}`)
-    .send(newBlog)
+  test('likes get value 0 as default', async () => {
+    const newBlog = {
+      title: 'Blazing Fast Delightful Testing',
+      author: 'Rick Hanlon',
+      url: 'https://jestjs.io/blog/2017/01/30/a-great-developer-experience',
+    }
 
-  const blogs = await helper.blogsInDb()
-  blogs.map((blog) => expect(blog.likes).toBeDefined())
-  const listOfLikes = blogs.map((blog) => blog.likes)
-  expect(listOfLikes).toContain(0)
-})
+    await api
+      .post('/api/blogs')
+      .send(newBlog)
+      .set(headers)
+      .expect(201)
+      .expect('Content-Type', /application\/json/)
 
-test('blog added without url 400 response', async () => {
-  const newBlog = new Blog({
-    author: 'Anne Roth',
-    likes: 4,
+    const blogsAtEnd = await helper.blogsInDb()
+    const added = blogsAtEnd.find((b) => b.url === newBlog.url)
+
+    expect(added.likes).toBe(0)
   })
-  const usersAtStart = await helper.usersInDb()
-  const user = usersAtStart[0]
-  const userForToken = {
-    username: user.username,
-    id: user.id,
-  }
-  const token = jwt.sign(userForToken, process.env.SECRET)
 
-  await api
-    .post('/api/blogs')
-    .set('Authorization', `bearer ${token.toString()}`)
-    .send(newBlog)
+  test('operation fails with proper error if url is missing', async () => {
+    const newBlog = {
+      title: 'Blazing Fast Delightful Testing',
+      author: 'Rick Hanlon',
+    }
+
+    await api
+      .post('/api/blogs')
+      .send(newBlog)
+      .set(headers)
+      .expect(400)
+      .expect('Content-Type', /application\/json/)
+  })
+
+  test('operation fails with proper error if token is missing', async () => {
+    const newBlog = {
+      title: 'Blazing Fast Delightful Testing',
+      author: 'Rick Hanlon',
+    }
+
+    await api
+      .post('/api/blogs')
+      .send(newBlog)
+      .expect(401)
+      .expect('Content-Type', /application\/json/)
+  })
+
+  describe('and it is saved to database', () => {
+    let result
+    beforeEach(async () => {
+      const newBlog = {
+        title: 'Great developer experience',
+        author: 'Hector Ramos',
+        url: 'https://jestjs.io/blog/2017/01/30/a-great-developer-experience',
+        likes: 7,
+      }
+
+      result = await api
+        .post('/api/blogs')
+        .send(newBlog)
+        .set(headers)
+    })
+
+    test('it can be removed', async () => {
+      const aBlog = result.body
+
+      const initialBlogs = await helper.blogsInDb()
+      await api
+        .delete(`/api/blogs/${aBlog.id}`)
+        .set(headers)
+        .expect(204)
+
+      const blogsAtEnd = await helper.blogsInDb()
+      expect(blogsAtEnd.length).toBe(initialBlogs.length - 1)
+
+      const titles = blogsAtEnd.map((b) => b.title)
+      expect(titles).not.toContain(
+        aBlog.title,
+      )
+    })
+  })
 })
 
-test('a blog post can be updated by id', async () => {
-  const blogsAtStart = await helper.blogsInDb()
-  const blogToUpdate = blogsAtStart[0]
-  blogToUpdate.likes = 1312
-  await api
-    .put(`/api/blogs/${blogToUpdate.id}`)
-    .send(blogToUpdate)
-  const blogsAtEnd = await helper.blogsInDb()
-  expect(blogsAtEnd[0].likes).toBe(1312)
-})
+describe('creation of a user', () => {
+  test('succeeds with a fresh username', async () => {
+    const usersAtStart = await helper.usersInDb()
 
-beforeEach(async () => {
-  await User.deleteMany({})
+    const newUser = {
+      username: 'mluukkai',
+      name: 'Matti Luukkainen',
+      password: 'salainen',
+    }
 
-  const userObjects = helper.initialUsers
-    .map((user) => new User(user))
-  const promiseArray = userObjects.map((user) => user.save())
-  await Promise.all(promiseArray)
-})
+    await api
+      .post('/api/users')
+      .send(newUser)
+      .expect(200)
+      .expect('Content-Type', /application\/json/)
 
-test('invalid users can not be created', async () => {
-  const usersAtStart = await helper.usersInDb()
-  const newUser = {
-    username: 'something',
-    name: 'something',
-    password: 'd',
-  }
-  const result = await api
-    .post('/api/users')
-    .send(newUser)
-    .expect(400)
-  expect((result.body.error)).toContain('password must be at least 3 characters long')
-  const usersAtEnd = await helper.usersInDb()
-  expect(usersAtEnd.length).toBe(usersAtStart.length)
-})
+    const usersAtEnd = await helper.usersInDb()
+    expect(usersAtEnd.length).toBe(usersAtStart.length + 1)
 
-test('blog can only be deleted by original user', async () => {
-  const blogsAtStart = await helper.blogsInDb()
-  const blogToDelete = blogsAtStart[0]
-  const usersAtStart = await helper.usersInDb()
-  const user = usersAtStart[0]
-  const userForToken = {
-    username: user.username,
-    id: user.id,
-  }
-  const token = jwt.sign(userForToken, process.env.SECRET)
+    const usernames = usersAtEnd.map((u) => u.username)
+    expect(usernames).toContain(newUser.username)
+  })
 
-  await api
-    .delete(`/api/blogs/${blogToDelete.id}`)
-    .set('Authorization', `bearer ${token.toString()}`)
-    .expect(401)
-  const blogsAtEnd = await helper.blogsInDb()
-  expect(blogsAtEnd.length).toBe(blogsAtStart.length)
-})
+  test('creation fails with proper statuscode and message if username already taken', async () => {
+    const newUser = {
+      username: 'johndoe',
+      name: 'John Doe',
+      password: 'sekred',
+    }
 
-test('blog can only be deleted when token is provided', async () => {
-  const blogsAtStart = await helper.blogsInDb()
-  const blogToDelete = blogsAtStart[0]
+    await api
+      .post('/api/users')
+      .send(newUser)
 
-  const result = await api
-    .delete(`/api/blogs/${blogToDelete.id}`)
-    .expect(401)
-  const blogsAtEnd = await helper.blogsInDb()
-  expect(blogsAtEnd.length).toBe(blogsAtStart.length)
-  expect((result.body.error)).toContain('Unauthorized')
-})
+    const result = await api
+      .post('/api/users')
+      .send(newUser)
+      .expect(400)
+      .expect('Content-Type', /application\/json/)
 
-test('delete a specific blog post by id', async () => {
-  const blogsAtStart = await helper.blogsInDb()
-  const blogToDelete = blogsAtStart[0]
-  const usersAtStart = await helper.usersInDb()
-  const userid = blogToDelete.user
-  const user = await usersAtStart.find((u) => u.id === userid.toString())
-  const userForToken = {
-    username: user.username,
-    id: user.id,
-  }
-  const token = jwt.sign(userForToken, process.env.SECRET)
+    expect(result.body.error).toContain('`username` to be unique')
+  })
 
-  await api
-    .delete(`/api/blogs/${blogToDelete.id}`)
-    .set('Authorization', `bearer ${token.toString()}`)
-    .expect(204)
-  const blogsAtEnd = await helper.blogsInDb()
-  expect(blogsAtEnd.length).toBe(blogsAtStart.length - 1)
+  test('creation fails with proper statuscode and message if username already taken', async () => {
+    const newUser = {
+      username: 'janedoe',
+      name: 'Jane Doe',
+      password: 'p',
+    }
+
+    const result = await api
+      .post('/api/users')
+      .send(newUser)
+      .expect(400)
+      .expect('Content-Type', /application\/json/)
+
+    expect(result.body.error).toContain('password must be at least 3 characters long')
+  })
 })
 
 afterAll(() => {

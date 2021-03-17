@@ -3,9 +3,9 @@ Content-Type: application/json
 Authorization: bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6Im1pbm8iLCJpZCI6IjVmNjg3ODI5YmFjMTMxZGI0NmIyNDNhNCIsImlhdCI6MTYwMDY4MzUxM30.nvV2kPsAEzY8s4LitocgGCHm1p4Su1ud_PA2RCYGsyQ
 
 {
-  "title": "Was PoC, Schwarze Menschen und Weiße jetzt konkret tun können",
-  "author": "Noah Sow",
-  "url": "https://www.noahsow.de/blog/was-poc-schwarze-menschen-und-weisse-jetzt-konkret-tun-koennen/",
+  "title": "rfrewfer",
+  "author": "dfsdf",
+  "url": "fsdfewfwef",
   "likes": 0,
   "userId": "5f687829bac131db46b243a4"
 }
